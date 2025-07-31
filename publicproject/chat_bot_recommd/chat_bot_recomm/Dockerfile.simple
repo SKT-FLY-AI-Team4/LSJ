@@ -1,0 +1,22 @@
+# 간단한 나비얌 챗봇 Docker 이미지 (테스트용)
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 기본 패키지만 설치
+RUN pip install fastapi uvicorn pydantic
+
+# 테스트 서버만 복사
+COPY test_simple_server.py .
+
+# 환경 변수
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8000
+
+EXPOSE 8000
+
+# 헬스체크
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["python", "test_simple_server.py"]

@@ -1,0 +1,54 @@
+# Cloud Run 서비스 설정
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: naviyam-chatbot
+  labels:
+    cloud.googleapis.com/location: asia-northeast3
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/ingress-status: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: "10"
+        autoscaling.knative.dev/minScale: "0"
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+      - image: asia-northeast3-docker.pkg.dev/PROJECT_ID/naviyam-repo/naviyam-chatbot:latest
+        ports:
+        - name: http1
+          containerPort: 8000
+        env:
+        - name: PORT
+          value: "8000"
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        resources:
+          limits:
+            cpu: "1"
+            memory: "2Gi"
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 15
+          timeoutSeconds: 5
+          periodSeconds: 15
+          failureThreshold: 3
+  traffic:
+  - percent: 100
+    latestRevision: true
