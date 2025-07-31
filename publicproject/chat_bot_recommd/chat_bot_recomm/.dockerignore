@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.env
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# Logs
+*.log
+logs/
+
+# Cache and temp
+cache/
+tmp/
+temp/
+
+# Model files (too large for container)
+*.bin
+*.safetensors
+models/
+checkpoints/
+
+# Data files
+data/
+datasets/
+*.csv
+*.json
+!requirements.txt
+
+# Outputs
+outputs/
+results/

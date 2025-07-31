@@ -5,14 +5,14 @@ from pydantic import BaseModel
 from fastapi import Depends, FastAPI, HTTPException, status, UploadFile, File
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 import shutil
 import aiofiles
 from google.cloud import storage
 
 app = FastAPI(
-    title="File Server API",
-    description="An API to serve files with basic authentication.",
+    title="나비얌 챗봇 & 파일 서버 API",
+    description="어린이를 위한 착한가게 추천 AI 챗봇과 파일 관리 서비스",
     version="1.0.0",
 )
 
@@ -20,6 +20,16 @@ security = HTTPBasic()
 
 class Message(BaseModel):
     text: str
+    
+class ChatRequest(BaseModel):
+    message: str
+    user_id: str = "guest"
+
+class ChatResponse(BaseModel):
+    response: str
+    user_id: str
+    timestamp: str
+    recommendations: list = []
 
 # --- Configuration ---
 # WARNING: In a real application, use a more secure way to handle credentials
@@ -84,6 +94,86 @@ async def list_files(username: str = Depends(get_current_username)):
     files = [blob.name for blob in blobs]
     return JSONResponse(content={"files": files}, media_type="application/json; charset=utf-8")
 
+@app.get("/files_html", summary="View files in HTML")
+async def view_files_html():
+    """
+    Provides an HTML page to view the list of files.
+    """
+    html_content = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>File List</title>
+        <style>
+            body { font-family: sans-serif; margin: 20px; }
+            h1 { color: #333; }
+            ul { list-style-type: none; padding: 0; }
+            li { margin-bottom: 5px; }
+            a { text-decoration: none; color: #007bff; }
+            a:hover { text-decoration: underline; }
+            #error { color: red; }
+        </style>
+    </head>
+    <body>
+        <h1>Files in GCS Bucket</h1>
+        <p id="loading">Loading files...</p>
+        <p id="error" style="display:none;"></p>
+        <ul id="fileList"></ul>
+
+        <script>
+            async function fetchFiles() {
+                const username = prompt("Enter username:");
+                const password = prompt("Enter password:");
+
+                if (!username || !password) {
+                    document.getElementById('error').innerText = "Username and password are required.";
+                    document.getElementById('error').style.display = 'block';
+                    document.getElementById('loading').style.display = 'none';
+                    return;
+                }
+
+                const headers = new Headers();
+                headers.set('Authorization', 'Basic ' + btoa(username + ':' + password));
+
+                try {
+                    const response = await fetch('/files', { headers: headers });
+                    document.getElementById('loading').style.display = 'none';
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        const fileList = document.getElementById('fileList');
+                        if (data.files && data.files.length > 0) {
+                            data.files.forEach(file => {
+                                const listItem = document.createElement('li');
+                                const link = document.createElement('a');
+                                link.href = `/files/${file}`; // Link to download the file
+                                link.textContent = file;
+                                listItem.appendChild(link);
+                                fileList.appendChild(listItem);
+                            });
+                        } else {
+                            fileList.innerHTML = '<li>No files found in the bucket.</li>';
+                        }
+                    } else if (response.status === 401) {
+                        document.getElementById('error').innerText = "Authentication failed. Please refresh and try again.";
+                        document.getElementById('error').style.display = 'block';
+                    } else {
+                        document.getElementById('error').innerText = `Error: ${response.status} ${response.statusText}`;
+                        document.getElementById('error').style.display = 'block';
+                    }
+                } catch (error) {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('error').innerText = `Network error: ${error.message}`;
+                    document.getElementById('error').style.display = 'block';
+                }
+            }
+            fetchFiles();
+        </script>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content, status_code=200)
+
 # Mount the static directory to serve files directly (optional, but useful)
 # This part is not protected by the authentication middleware.
 # To protect it, you would need to implement a custom middleware.
@@ -91,11 +181,26 @@ async def list_files(username: str = Depends(get_current_username)):
 
 @app.get("/")
 def read_root():
-    return {"message": "lsj is running"}
+    return JSONResponse(
+        content={
+            "message": "나비얌 챗봇 서버가 실행 중입니다! 🍗", 
+            "services": ["파일 서버", "나비얌 챗봇"],
+            "endpoints": {
+                "chat": "/chat - 챗봇과 대화",
+                "health": "/health - 서비스 상태 확인",
+                "files": "/files - 파일 목록 조회",
+                "docs": "/docs - API 문서"
+            }
+        },
+        media_type="application/json; charset=utf-8"
+    )
 
 @app.post("/send")
 def send_message(message: Message):
-    return {"lsj received_message": message.text}
+    return JSONResponse(
+        content={"lsj received_message": message.text},
+        media_type="application/json; charset=utf-8"
+    )
 
 @app.post("/uploadfile/", summary="Upload a file")
 async def create_upload_file(
@@ -142,6 +247,62 @@ def add_data(item: str, username: str = Depends(get_current_username)):
     """
     my_data.append(item)
     return {"message": f"'{item}' added to data", "current_data": my_data}
+
+@app.post("/chat", response_model=ChatResponse, summary="Chat with Naviyam Bot")
+async def chat_with_bot(request: ChatRequest):
+    """
+    나비얌 챗봇과 대화합니다. 어린이를 위한 착한가게 추천 AI입니다.
+    
+    - **message**: 사용자 메시지
+    - **user_id**: 사용자 ID (선택사항, 기본값: guest)
+    """
+    from datetime import datetime
+    
+    # 간단한 키워드 기반 응답
+    message = request.message.lower()
+    
+    if "치킨" in message:
+        response = "🍗 치킨이 먹고 싶으시군요! 근처 착한가게 치킨집을 찾아드릴게요."
+        recommendations = ["BBQ치킨 (착한가게)", "교촌치킨 (할인가게)", "네네치킨 (깨끗한가게)"]
+    elif "피자" in message:
+        response = "🍕 피자가 땡기시는군요! 맛있는 피자집을 추천해드려요."
+        recommendations = ["도미노피자 (할인중)", "피자헛 (가족세트)", "파파존스 (신선한재료)"]
+    elif "안녕" in message or "hello" in message:
+        response = "안녕하세요! 👋 나비얌 챗봇입니다. 어떤 음식이 드시고 싶으신가요?"
+        recommendations = []
+    elif "예산" in message or "돈" in message or "만원" in message:
+        response = "💰 예산을 고려한 맛집을 찾아드릴게요! 착한가게 위주로 추천드려요."
+        recommendations = ["1만원 이하 맛집", "2만원 이하 가성비", "3만원 이하 특별한날"]
+    elif "hamburger" in message or "burger" in message or "햄버거" in message:
+        response = "🍔 햄버거 맛집을 찾아드릴게요! 착한가게 인증받은 곳들이에요."
+        recommendations = ["맥도날드 (착한가게)", "버거킹 (할인쿠폰)", "롯데리아 (세트메뉴)"]
+    else:
+        response = f"'{request.message}' 에 대해 검색 중이에요... 🔍 조금만 기다려주세요!"
+        recommendations = ["추천 준비중"]
+    
+    return JSONResponse(
+        content={
+            "response": response,
+            "user_id": request.user_id,
+            "timestamp": datetime.now().isoformat(),
+            "recommendations": recommendations
+        },
+        media_type="application/json; charset=utf-8"
+    )
+
+@app.get("/health", summary="Health Check")
+def health_check():
+    """
+    서비스 상태를 확인합니다.
+    """
+    return JSONResponse(
+        content={
+            "status": "healthy", 
+            "message": "나비얌 챗봇 서비스가 정상 동작 중입니다!", 
+            "version": "1.0.0"
+        },
+        media_type="application/json; charset=utf-8"
+    )
 
 if __name__ == "__main__":
     import uvicorn
